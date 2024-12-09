@@ -8,8 +8,10 @@ fn main() {
         let mut parts = line.split_whitespace();
         lefts.push(parts.next().expect("no left value").parse().unwrap());
         let right = parts.next().expect("no right value").parse().unwrap();
-        let right_entry = right_freqs.entry(right).or_insert(0);
-        *right_entry += 1
+        right_freqs
+            .entry(right)
+            .and_modify(|entry| *entry += 1)
+            .or_insert(1);
     }
     let mut score: u32 = 0;
     for left in lefts {
