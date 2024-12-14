@@ -27,15 +27,16 @@ fn main() {
             let mut did_remove_pages = false;
             for part in parts {
                 let page = part.parse().unwrap();
-                let illegal_pages = rules.entry(page).or_insert_with(|| HashSet::new());
-                found_pages.retain(|found_page| {
-                    if illegal_pages.contains(found_page) {
-                        removed_pages.push(*found_page);
-                        did_remove_pages = true;
-                        return false;
-                    }
-                    true
-                });
+                if let Some(illegal_pages) = rules.get(&page) {
+                    found_pages.retain(|found_page| {
+                        if illegal_pages.contains(found_page) {
+                            removed_pages.push(*found_page);
+                            did_remove_pages = true;
+                            return false;
+                        }
+                        true
+                    });
+                }
                 found_pages.push(page);
                 found_pages.append(&mut removed_pages);
             }
