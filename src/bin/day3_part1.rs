@@ -8,7 +8,11 @@ fn main() {
     let mut a: u32 = 0;
     let mut b: u32 = 0;
     for byte in io::stdin().bytes().filter_map(Result::ok) {
-        if state == 0 && byte == b'm' {
+        if byte == b'm' {
+            a_digits = 0;
+            b_digits = 0;
+            a = 0;
+            b = 0;
             state = 1;
         } else if state == 1 && byte == b'u' {
             state = 2;
@@ -27,16 +31,8 @@ fn main() {
         } else if state == 5 && byte == b')' && b_digits > 0 {
             sum += a * b;
             state = 0;
-            a_digits = 0;
-            b_digits = 0;
-            a = 0;
-            b = 0;
         } else {
             state = 0;
-            a_digits = 0;
-            b_digits = 0;
-            a = 0;
-            b = 0;
         }
     }
     println!("{sum}")
