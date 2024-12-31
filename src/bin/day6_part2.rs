@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::{self, Read},
 };
 
@@ -79,6 +79,16 @@ impl Placement {
         })
     }
 
+    fn move_backward(self: &Self, size: &Size) -> Option<Self> {
+        let new_pos = self
+            .position
+            .move_in_dir(size, &self.direction.rotate_90().rotate_90());
+        new_pos.map(|position| Placement {
+            position,
+            direction: self.direction.clone(),
+        })
+    }
+
     fn rotate_90(self: &Self) -> Self {
         let new_dir = self.direction.rotate_90();
         Placement {
@@ -89,26 +99,54 @@ impl Placement {
 }
 
 #[derive(Clone)]
+struct PastPlacementData {
+    first_direction: Direction,
+    directions: HashSet<Direction>,
+}
+
+#[derive(Clone)]
 struct GuardData {
-    past_placements: HashSet<Placement>,
+    past_placements: HashMap<Position, PastPlacementData>,
     placement: Placement,
 }
 
 impl GuardData {
     fn from_placement(placement: Placement) -> Self {
         GuardData {
-            past_placements: HashSet::from([placement.clone()]),
+            past_placements: HashMap::from([(
+                placement.position.clone(),
+                PastPlacementData {
+                    first_direction: placement.direction.clone(),
+                    directions: HashSet::from([placement.direction.clone()]),
+                },
+            )]),
             placement,
         }
     }
 
-    fn update_placement(self: &mut Self, new_placement: Placement) {
-        self.past_placements.insert(new_placement.clone());
+    fn update_and_add_placement(self: &mut Self, new_placement: Placement) {
+        self.past_placements
+            .entry(new_placement.position.clone())
+            .and_modify(|placement_data| {
+                placement_data
+                    .directions
+                    .insert(new_placement.direction.clone());
+            })
+            .or_insert_with(|| PastPlacementData {
+                first_direction: new_placement.direction.clone(),
+                directions: HashSet::from([new_placement.direction.clone()]),
+            });
         self.placement = new_placement;
     }
 
     fn was_at_placement(self: &Self, placement: &Placement) -> bool {
-        self.past_placements.contains(placement)
+        self.past_placements
+            .get(&placement.position)
+            .map_or(false, |past_placement_data| {
+                past_placement_data
+                    .directions
+                    .contains(&placement.direction)
+            })
     }
 }
 
@@ -193,7 +231,10 @@ impl LabMap {
     }
 }
 
-fn will_guard_get_stuck(lab_map: &LabMap, guard_data: &GuardData) -> (bool, HashSet<Placement>) {
+fn will_guard_get_stuck(
+    lab_map: &LabMap,
+    guard_data: &GuardData,
+) -> (bool, HashMap<Position, PastPlacementData>) {
     let mut guard_data = guard_data.clone();
     loop {
         if let Some(new_placement) = guard_data.placement.move_forward(&lab_map.size) {
@@ -202,11 +243,11 @@ fn will_guard_get_stuck(lab_map: &LabMap, guard_data: &GuardData) -> (bool, Hash
                     if guard_data.was_at_placement(&new_placement) {
                         return (true, guard_data.past_placements);
                     }
-                    guard_data.update_placement(new_placement);
+                    guard_data.update_and_add_placement(new_placement);
                 }
                 Some(MapTile::Obstructed) => {
                     let new_placement = guard_data.placement.rotate_90();
-                    guard_data.update_placement(new_placement);
+                    guard_data.placement = new_placement;
                 }
                 None => unreachable!(),
             }
@@ -221,15 +262,20 @@ fn main() {
     let mut distinct_pos = 0u32;
     let mut lab_data = LabData::from_bytes(io::stdin().bytes().filter_map(Result::ok));
     if let Some(ref mut guard_data) = lab_data.guard_data {
-        let (_, initial_placements) = will_guard_get_stuck(&lab_data.map, guard_data);
-        let initial_positions: HashSet<Position> = initial_placements.iter().map(|placement| placement.position.clone()).collect();
-        let total = initial_positions.len();
-        for (i, position) in initial_positions.iter().enumerate() {
+        let (_, initial_placement_data) = will_guard_get_stuck(&lab_data.map, guard_data);
+        let total = initial_placement_data.len();
+        for (i, (position, past_placement_data)) in initial_placement_data.iter().enumerate() {
             println!("Trying with obstacle at position {i} of {total}");
             let mut candidate_lab_map = lab_data.map.clone();
             *candidate_lab_map.get_mut_tile(&position).unwrap() = MapTile::Obstructed;
-            if will_guard_get_stuck(&candidate_lab_map, guard_data).0 {
-                distinct_pos += 1;
+            let candidate_guard_placement = Placement {
+                direction: past_placement_data.first_direction.clone(),
+                position: position.clone(),
+            }.move_backward(&lab_data.map.size);
+            if let Some(placement) = candidate_guard_placement {
+                if will_guard_get_stuck(&candidate_lab_map, &GuardData::from_placement(placement)).0 {
+                    distinct_pos += 1;
+                }
             }
         }
         println!("{distinct_pos}");
